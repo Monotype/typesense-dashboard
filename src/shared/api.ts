@@ -23,6 +23,7 @@ export class Api {
     this.axiosClient = axios.create({
       baseURL: `${node.protocol}://${node.host}:${node.port}${node.path || ''}`,
       headers: { 'x-typesense-api-key': apiKey },
+      timeout: 6000
     });
     this.typesenseClient = new Typesense.Client({
       nodes: [
@@ -31,7 +32,7 @@ export class Api {
         },
       ],
       apiKey,
-      //connection_timeout_seconds: 3600,
+      connection_timeout_seconds: 3600,
     });
   }
 
