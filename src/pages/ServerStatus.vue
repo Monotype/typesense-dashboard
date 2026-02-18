@@ -6,43 +6,54 @@
           <q-card-section>
             <div class="text-h5">System</div>
             <div class="text-subtitle1 q-pt-md">CPU</div>
-            <div class="row">
+            <q-linear-progress
+              v-if="hasCpuOverall"
+              size="25px"
+              :value="cpuOverallRatio"
+              color="accent"
+            >
+              <div class="absolute-full flex flex-center">
+                <q-badge color="white" text-color="accent" :label="`${cpuOverallPercent}%`" />
+              </div>
+            </q-linear-progress>
+
+            <div class="row q-mt-sm">
               <div
                 v-for="cpu in sortedCPU"
                 :key="cpu.node"
-                class="column flex-center flex-wrap q-ma-md"
+                class="col-6 col-sm-4 col-md-3 col-lg-2 q-mb-md flex flex-center"
               >
-                <span class="text-overline">CPU {{ cpu.node }}</span>
-                <q-circular-progress
-                  show-value
-                  :value="cpu.value"
-                  size="50px"
-                  color="accent"
-                  track-color="grey-3"
-                />
+                <div class="column items-center">
+                  <span class="text-overline">CPU {{ cpu.node }}</span>
+                  <q-circular-progress
+                    show-value
+                    :value="cpu.value"
+                    size="50px"
+                    color="accent"
+                    track-color="grey-3"
+                  />
+                </div>
               </div>
             </div>
             <div class="text-subtitle1 q-pt-md">Memory</div>
             <q-linear-progress
+              v-if="hasSystemMemory"
               size="25px"
-              :value="
-                parseInt(store.data.metrics.system_memory_used_bytes, 10) /
-                parseInt(store.data.metrics.system_memory_total_bytes, 10)
-              "
+              :value="systemMemoryRatio"
               color="accent"
             >
               <div class="absolute-full flex flex-center">
                 <q-badge
                   color="white"
                   text-color="accent"
-                  :label="prettyBytes(parseInt(store.data.metrics.system_memory_used_bytes, 10))"
+                  :label="prettyBytes(systemMemoryUsedBytes!)"
                 />
               </div>
               <div class="absolute-full flex justify-end">
                 <q-badge
                   color="white"
                   text-color="accent"
-                  :label="prettyBytes(parseInt(store.data.metrics.system_memory_total_bytes, 10))"
+                  :label="prettyBytes(systemMemoryTotalBytes!)"
                 />
               </div>
             </q-linear-progress>
@@ -50,34 +61,32 @@
             <div class="text-subtitle1 q-pt-md">Disk</div>
 
             <q-linear-progress
+              v-if="hasSystemDisk"
               size="25px"
-              :value="
-                parseInt(store.data.metrics.system_disk_used_bytes, 10) /
-                parseInt(store.data.metrics.system_disk_total_bytes, 10)
-              "
+              :value="systemDiskRatio"
               color="accent"
             >
               <div class="absolute-full flex flex-center">
                 <q-badge
                   color="white"
                   text-color="accent"
-                  :label="prettyBytes(parseInt(store.data.metrics.system_disk_used_bytes, 10))"
+                  :label="prettyBytes(systemDiskUsedBytes!)"
                 />
               </div>
               <div class="absolute-full flex justify-end">
                 <q-badge
                   color="white"
                   text-color="accent"
-                  :label="prettyBytes(parseInt(store.data.metrics.system_disk_total_bytes, 10))"
+                  :label="prettyBytes(systemDiskTotalBytes!)"
                 />
               </div>
             </q-linear-progress>
             <div class="text-subtitle1 q-pt-md">System Network</div>
             <div>
               Received:
-              {{ prettyBytes(parseInt(store.data.metrics.system_network_received_bytes, 10)) }}
+              {{ systemNetworkReceivedLabel }}
               Sent:
-              {{ prettyBytes(parseInt(store.data.metrics.system_network_sent_bytes, 10)) }}
+              {{ systemNetworkSentLabel }}
             </div>
           </q-card-section>
         </q-card>
@@ -127,6 +136,18 @@
               padding="sm lg"
               @click="store.operationCompactDB"
             />
+            <div class="text-subtitle1 q-pt-md">Create Snapshot</div>
+            <p>
+              Creates a point-in-time snapshot of the node's state and data for backup purposes.
+            </p>
+            <q-btn
+              label="Create Snapshot"
+              color="accent"
+              unelevated
+              size="md"
+              padding="sm lg"
+              @click="showSnapshotDialog()"
+            />
           </q-card-section>
         </q-card>
       </div>
@@ -134,7 +155,10 @@
         <q-card-section>
           <div class="text-h5">Typesense</div>
 
-          <div class="text-subtitle1 q-pt-md">Node</div>
+          <div class="text-subtitle1 q-pt-md">
+            Node
+            <health-tag :health="store.data.health"></health-tag>
+          </div>
 
           <div>Protocol: {{ store.loginData?.node.protocol }}</div>
           <div>Host: {{ store.loginData?.node.host }}</div>
@@ -144,6 +168,35 @@
             Role:
             {{ store.data.debug.state === 1 ? 'Leader' : 'Follower' }}
           </div>
+
+          <template v-if="store.currentClusterTag">
+            <div class="text-subtitle1 q-pt-md">Cluster: {{ store.currentClusterTag }}</div>
+            <q-list dense separator class="q-mt-xs">
+              <q-item
+                v-for="(member, idx) in store.clusterMembersForCurrent"
+                :key="idx"
+                clickable
+                :disable="store.isCurrent(member)"
+                @click="connectTo(member)"
+              >
+                <q-item-section>
+                  {{ member.node.protocol }}://{{ member.node.host }}:{{ member.node.port }}
+                </q-item-section>
+                <q-item-section side>
+                  <q-chip
+                    v-if="store.isCurrent(member)"
+                    color="positive"
+                    text-color="white"
+                    dense
+                    size="sm"
+                  >
+                    Current
+                  </q-chip>
+                  <q-btn v-else flat dense size="sm" label="Connect" />
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </template>
 
           <div class="text-subtitle1 q-pt-md">Memory</div>
           <div
@@ -168,22 +221,80 @@
         </q-card-section>
       </q-card>
     </div>
+
+    <!-- Create Snapshot Dialog -->
+    <q-dialog v-model="isSnapshotDialogVisible" persistent>
+      <q-card style="min-width: 400px">
+        <q-card-section>
+          <div class="text-h6">Create Snapshot</div>
+          <div class="text-subtitle2 text-grey-7 q-mt-sm">
+            Enter the directory path where the snapshot should be saved on the server.
+          </div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <q-input
+            v-model="snapshotPath"
+            outlined
+            label="Snapshot Path"
+            hint="Example: /tmp/typesense-data-snapshot"
+            :rules="[(val) => (val && val.length > 0) || 'Snapshot path is required']"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right" class="text-primary">
+          <q-btn flat label="Cancel" @click="cancelSnapshot" />
+          <q-btn
+            flat
+            label="Create Snapshot"
+            color="accent"
+            :disable="!isSnapshotPathValid"
+            @click="createSnapshot"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { useNodeStore } from 'src/stores/node';
+import type { NodeLoginDataInterface } from 'src/stores/node';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import prettyBytes from 'pretty-bytes';
+import HealthTag from 'src/components/HealthTag.vue';
 
 const store = useNodeStore();
 
 const refreshInterval = ref<number | undefined>(undefined);
 const slowQueryThreshold = ref<number>(-1);
+const isSnapshotDialogVisible = ref<boolean>(false);
+const snapshotPath = ref<string>('/tmp/typesense-data-snapshot');
 
 function isObject(obj: unknown) {
   return typeof obj === 'object';
 }
+
+function showSnapshotDialog() {
+  snapshotPath.value = `/tmp/typesense-data-snapshot-${new Date().toISOString().replace(/:\d{2}\.\d{3}Z$/, '')}`;
+  isSnapshotDialogVisible.value = true;
+}
+
+function cancelSnapshot() {
+  isSnapshotDialogVisible.value = false;
+  snapshotPath.value = '/tmp/typesense-data-snapshot';
+}
+
+function createSnapshot() {
+  if (isSnapshotPathValid.value) {
+    void store.createSnapshot(snapshotPath.value);
+    isSnapshotDialogVisible.value = false;
+  }
+}
+
+const isSnapshotPathValid = computed(() => {
+  return snapshotPath.value && snapshotPath.value.length > 0;
+});
 
 onMounted(() => {
   refreshInterval.value = window.setInterval(() => {
@@ -197,7 +308,7 @@ onBeforeUnmount(() => {
 
 const sortedCPU = computed(() => {
   return Object.entries(store.data.metrics)
-    .filter(([key]) => key.includes('cpu'))
+    .filter(([key]) => /^system_cpu\d+_active_percentage$/.test(key))
     .map(([key, value]) => {
       let node = 0;
       const keyData = key.split('_');
@@ -209,6 +320,92 @@ const sortedCPU = computed(() => {
         value: parseFloat(value as string),
       };
     })
+    .filter((cpu) => Number.isFinite(cpu.value))
     .sort((a, b) => a.node - b.node);
 });
+
+const hasCpuOverall = computed(() =>
+  Object.prototype.hasOwnProperty.call(store.data.metrics, 'system_cpu_active_percentage'),
+);
+
+const cpuOverallRatio = computed(() => {
+  const metrics = store.data.metrics as Record<string, unknown> | undefined;
+  const raw = metrics ? metrics['system_cpu_active_percentage'] : undefined;
+  const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : NaN;
+  if (!isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v / 100));
+});
+
+const cpuOverallPercent = computed(() => Math.round(cpuOverallRatio.value * 100));
+
+function toFiniteNumber(v: unknown): number | null {
+  if (typeof v === 'number') {
+    return Number.isFinite(v) ? v : null;
+  }
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+const systemMemoryUsedBytes = computed(() =>
+  toFiniteNumber((store.data.metrics as Record<string, unknown>)?.system_memory_used_bytes),
+);
+
+const systemMemoryTotalBytes = computed(() =>
+  toFiniteNumber((store.data.metrics as Record<string, unknown>)?.system_memory_total_bytes),
+);
+
+const hasSystemMemory = computed(() => {
+  const used = systemMemoryUsedBytes.value;
+  const total = systemMemoryTotalBytes.value;
+  return used !== null && total !== null && total > 0;
+});
+
+const systemMemoryRatio = computed(() => {
+  if (!hasSystemMemory.value) return 0;
+  const ratio = (systemMemoryUsedBytes.value as number) / (systemMemoryTotalBytes.value as number);
+  if (!Number.isFinite(ratio)) return 0;
+  return Math.max(0, Math.min(1, ratio));
+});
+
+const systemDiskUsedBytes = computed(() =>
+  toFiniteNumber((store.data.metrics as Record<string, unknown>)?.system_disk_used_bytes),
+);
+
+const systemDiskTotalBytes = computed(() =>
+  toFiniteNumber((store.data.metrics as Record<string, unknown>)?.system_disk_total_bytes),
+);
+
+const hasSystemDisk = computed(() => {
+  const used = systemDiskUsedBytes.value;
+  const total = systemDiskTotalBytes.value;
+  return used !== null && total !== null && total > 0;
+});
+
+const systemDiskRatio = computed(() => {
+  if (!hasSystemDisk.value) return 0;
+  const ratio = (systemDiskUsedBytes.value as number) / (systemDiskTotalBytes.value as number);
+  if (!Number.isFinite(ratio)) return 0;
+  return Math.max(0, Math.min(1, ratio));
+});
+
+const systemNetworkReceivedLabel = computed(() => {
+  const v = toFiniteNumber(
+    (store.data.metrics as Record<string, unknown>)?.system_network_received_bytes,
+  );
+  return v === null ? '—' : prettyBytes(v);
+});
+
+const systemNetworkSentLabel = computed(() => {
+  const v = toFiniteNumber(
+    (store.data.metrics as Record<string, unknown>)?.system_network_sent_bytes,
+  );
+  return v === null ? '—' : prettyBytes(v);
+});
+
+function connectTo(member: NodeLoginDataInterface) {
+  void store.login({ apiKey: member.apiKey, node: member.node, forceHomeRedirect: true });
+}
 </script>

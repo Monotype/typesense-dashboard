@@ -21,7 +21,7 @@
             :class="isArrayField(item[key]) ? 'array-field' : 'nested-field'"
           >
             <template v-for="(subitem, index) in item[key]" :key="index">
-              <div v-if="subitem.value && subitem.matchLevel">
+              <div v-if="isHighlightLeaf(subitem)">
                 <search-result-item-attribute :hit="subitem" />
               </div>
               <search-result-item-nested-display
@@ -33,7 +33,14 @@
             </template>
           </div>
           <div v-else>
-            <search-result-item-attribute :hit="item[key]" />
+            <search-result-item-attribute v-if="isHighlightLeaf(item[key])" :hit="item[key]" />
+            <search-result-item-nested-display
+              v-else-if="isPlainObject(item[key])"
+              :item="item[key]"
+              :include-fields="nestedFieldsFor(props.includeFields, key)"
+              :embed-fields="nestedFieldsFor(props.embedFields, key)"
+            />
+            <span v-else>{{ String(item[key]) }}</span>
           </div>
         </q-item-label>
       </q-item-section>
@@ -55,8 +62,20 @@ const props = withDefaults(
   },
 );
 
-function isArrayField(obj: any) {
-  return obj.some((subitem: any) => subitem.value && subitem.matchLevel);
+function isHighlightLeaf(item: any): item is { value: unknown; matchLevel: unknown } {
+  if (item === null || item === undefined || typeof item !== 'object') return false;
+  return (
+    Object.prototype.hasOwnProperty.call(item, 'value') &&
+    Object.prototype.hasOwnProperty.call(item, 'matchLevel')
+  );
+}
+
+function isPlainObject(item: any): item is Record<string, any> {
+  return item !== null && item !== undefined && typeof item === 'object' && !Array.isArray(item);
+}
+
+function isArrayField(obj: any[]) {
+  return obj.some((subitem: any) => isHighlightLeaf(subitem));
 }
 
 function nestedFieldsFor(fields: string[], key: string) {
@@ -75,18 +94,24 @@ const sortedKeys = computed(() => {
 });
 
 function extractValue(item: any): any {
+  // Handle primitive values
+  if (item === null || item === undefined || typeof item !== 'object') {
+    return item;
+  }
+
   if (Array.isArray(item)) {
     return item.map((subitem: any) => extractValue(subitem));
   }
-  if (
-    Object.prototype.hasOwnProperty.call(item, 'value') &&
-    Object.prototype.hasOwnProperty.call(item, 'matchLevel')
-  ) {
+
+  if (isHighlightLeaf(item)) {
     return item.value;
   }
+
   const values: Record<string, any> = {};
   for (const key in item) {
-    values[key] = extractValue(item[key]);
+    if (Object.prototype.hasOwnProperty.call(item, key)) {
+      values[key] = extractValue(item[key]);
+    }
   }
   return values;
 }

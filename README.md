@@ -49,13 +49,58 @@ You can also use the pre-built docker image for example like this:
 docker run -d -p 80:80 ghcr.io/bfritscher/typesense-dashboard:latest
 ```
 
-You can enable auto-login by mapping a config.json file to `/srv/config.json` in the container.
+#### Development proxy (`/api`)
+
+When running `npm run dev`, you can optionally proxy `/api` to a remote Typesense server to avoid CORS issues during local development.
+
+Set `DEV_API_PROXY_TARGET` to the remote origin (protocol + host + optional port). The dev server will forward `/api/*` to the target and strip the `/api` prefix.
+
+PowerShell example:
+
+```powershell
+$env:DEV_API_PROXY_TARGET = "https://my-typesense.example.com"; npm run dev
+```
+
+### Configuration
+
+Multiple settings are available to configure the dashboard behaviour: autologin, UI options, bookmarks (via history) and cluster tagging.
+
+The application looks for the configuration in `/config.json` on initial page load. There are two ways to provide this file when running in Docker:
+
+- volume mount a `config.json` file to `/srv/config.json` in the container
+- set environment variable `TYPESENSE_DASHBOARD_CONFIG` containing the configuration JSON file in base64 encoded format (the container will generate `config.json` at startup)
 
 ```bash
 docker run -d -p 80:80 -v /path/to/config.json:/srv/config.json typesense-dashboard
 ```
 
+```bash
+docker run -d -p 80:80 -e TYPESENSE_DASHBOARD_CONFIG=$(base64 -w 0 /path/to/config.json) typesense-dashboard
+```
+
 Sample config.json (same data as saved in localStorage of the browser). A sample configuration file is available at `config.json.sample` in the project root.
+
+#### Special host mode: `SAME`
+
+For the web version, you can set `node.host` to `"SAME"` to connect to a Typesense node on the same hostname as the dashboard is being served from.
+When `host` is `"SAME"`, the dashboard resolves:
+
+- `host` from `window.location.hostname`
+- `protocol` from `window.location.protocol` (`http` / `https`)
+- `port` from `window.location.port` (or `80/443` if not present)
+
+This is useful when you reverse-proxy the dashboard and Typesense under the same domain.
+
+Example:
+
+```json
+{
+  "node": {
+    "host": "SAME",
+    "path": "/api"
+  }
+}
+```
 
 ```json
 {
@@ -89,7 +134,8 @@ Sample config.json (same data as saved in localStorage of the browser). A sample
         "protocol": "http",
         "path": "",
         "tls": true
-      }
+      },
+      "clusterTag": "dev-cluster"
     }
   ]
 }
@@ -103,10 +149,32 @@ The `ui` section allows you to customize the dashboard interface:
 
 - `hideProjectInfo`: Set to `true` to hide the project information section (version, GitHub link, and issue tracker) from the navigation menu. Default is `false`.
 
+### Cluster Status
+
+The Cluster Status page lets you see multiple Typesense nodes side-by-side and poll their status in parallel. Each node card shows:
+
+- Node URL and version
+- Role with emphasis (Leader/Follower)
+- Memory and Disk usage
+- Typesense memory metrics (eg, typesense\_\* metrics)
+- System Network Rx/Tx
+- Stats (if enabled on the node)
+
+How it works:
+
+- The navigation entry for Cluster Status appears only when the currently connected node belongs to a cluster.
+- Nodes are associated to a cluster using an optional `clusterTag` field embedded in each login history entry.
+- Nodes are displayed in a stable order (host, then port, then protocol), and the current node is highlighted. You can switch to another node directly from its card.
+
+Ways to define clusters:
+
+- In the UI: tag any saved server entry (from the server history popover) with a text tag. The tag input autocompletes existing tags and accepts new values.
+- In `config.json`: pre-populate history entries with an optional `clusterTag` to group them. If a history entry omits `clusterTag`, it is not part of any cluster. The Cluster Status page is shown only when the currently connected node has a `clusterTag`.
+
 ### Desktop
 
 With the desktop application everything except instant search will work without cors.
-To export or import large json or ljson files, desktop version is required, because the browser version times out.
+To export or import large json or jsonl files, desktop version is required, because the browser version times out.
 
 Download from the [release page](https://github.com/bfritscher/typesense-dashboard/releases) or build your own.
 

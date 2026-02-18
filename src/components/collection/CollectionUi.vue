@@ -101,6 +101,17 @@
                 <q-checkbox v-model="field.sort" label="sort" />
                 <q-checkbox v-model="field.infix" label="infix" />
                 <q-checkbox v-model="field.stem" label="stem" />
+                <q-select
+                  v-if="field.stem"
+                  :model-value="getStemDictionaryValue(field)"
+                  :options="stemmingDictionaryOptions"
+                  dense
+                  outlined
+                  label="Stemming Dictionary"
+                  class="q-mt-sm"
+                  style="min-width: 200px"
+                  @update:model-value="setStemDictionaryValue(field, $event)"
+                />
               </div>
 
               <q-btn size="md" padding="sm lg" unelevated @click="removeField(field)"
@@ -143,6 +154,8 @@ import type {
 } from 'typesense/lib/Typesense/Collection';
 import type { CollectionCreateSchema } from 'typesense/lib/Typesense/Collections';
 import { defineComponent } from 'vue';
+import { mapState } from 'pinia';
+import { useNodeStore } from 'src/stores/node';
 import MonacoEditor from '../MonacoEditor.vue';
 
 export default defineComponent({
@@ -166,6 +179,7 @@ export default defineComponent({
               stem: false,
               locale: '',
               num_dim: undefined,
+              stem_dictionary: '',
             } as unknown,
           ],
           default_sorting_field: '',
@@ -208,22 +222,31 @@ export default defineComponent({
         'bool[]',
         'geopoint',
         'geopoint[]',
+        'geopolygon',
         'object',
         'object[]',
         'string*',
+        'image',
         'auto',
       ],
       jsonError: null as string | null,
     };
   },
   computed: {
+    ...mapState(useNodeStore, {
+      stemmingDictionaries: (store) => store.data.stemmingDictionaries,
+    }),
     availableSortFields(): string[] {
       const compatibleFields = (this.schema.fields || []).filter(
         (field) =>
-          ['int32', 'float'].includes(field.type) || (field.type === 'string' && field.sort),
+          ['int32', 'int64', 'float'].includes(field.type) ||
+          (field.type === 'string' && field.sort),
       );
       // empty option + compatible field names
       return [''].concat(compatibleFields.map((field) => field.name));
+    },
+    stemmingDictionaryOptions(): string[] {
+      return ['default'].concat(this.stemmingDictionaries || []);
     },
     schemaJson: {
       get(): string {
@@ -262,6 +285,7 @@ export default defineComponent({
           stem: false,
           locale: '',
           num_dim: undefined,
+          stem_dictionary: '',
         });
       }
     },
@@ -271,6 +295,16 @@ export default defineComponent({
         if (index > -1) {
           this.schema.fields.splice(index, 1);
         }
+      }
+    },
+    getStemDictionaryValue(field: any) {
+      return field.stem_dictionary || 'default';
+    },
+    setStemDictionaryValue(field: any, value: string) {
+      if (value === 'default') {
+        field.stem_dictionary = '';
+      } else {
+        field.stem_dictionary = value;
       }
     },
   },
