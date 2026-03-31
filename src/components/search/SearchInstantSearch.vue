@@ -16,6 +16,7 @@
       <div class="col-3 q-pr-sm">
         <ais-hits-per-page
           :items="[
+            { label: '4 hits per page', value: 4 },
             { label: '12 hits per page', value: 12, default: true },
             { label: '48 hits per page', value: 48 },
             { label: '100 hits per page', value: 100 },
@@ -94,6 +95,7 @@ import SearchResultItem from 'src/components/search/SearchResultItem.vue';
 import DebouncedSearchBox from 'src/components/search/DebouncedSearchBox.vue';
 import TypesenseInstantSearchAdapter from 'typesense-instantsearch-adapter';
 import type { CollectionSchema } from 'typesense/lib/Typesense/Collection';
+import type { ConfigurationOptions } from 'typesense/lib/Typesense/Configuration';
 
 const store = useNodeStore();
 const searchClient = ref<any>(null);
@@ -206,15 +208,15 @@ watch(
         .join(',');
 
       try {
+        const serverConfig: ConfigurationOptions = {
+          nodes: [{...store.loginData.node}],
+          apiKey: store.loginData.apiKey,
+        };
+        if (store.loginData.connectionTimeoutSeconds !== undefined) {
+          serverConfig.connectionTimeoutSeconds = store.loginData.connectionTimeoutSeconds;
+        }
         const adapter = new TypesenseInstantSearchAdapter({
-          server: {
-            nodes: [
-              {
-                ...store.loginData.node,
-              },
-            ],
-            apiKey: store.loginData.apiKey,
-          },
+          server: serverConfig,
           additionalSearchParameters: {
             max_candidates: maxCandidates.value,
             query_by,
